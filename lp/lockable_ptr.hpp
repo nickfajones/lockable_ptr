@@ -17,8 +17,10 @@
 #ifndef LP_LOCKABLE_PTR_HPP
 #define LP_LOCKABLE_PTR_HPP
 
-#include <shared_ptr>
+#include <memory>
 #include <shared_mutex>
+
+#include "lockable_ptr_base.hpp"
 
 
 namespace lp
@@ -30,77 +32,113 @@ class lockable_ptr {
     friend class reader;
     friend class writer;
 
+  private:
+    struct wrapper {
+      typedef std::shared_ptr<struct wrapper> pointer_type;
+
+      wrapper(T *t) :
+        t_(t) {
+      }
+      ~wrapper() {
+        delete t_;
+        t_ = 0;
+      }
+
+      std::shared_timed_mutex mutex_;
+
+      T *t_;
+    };
+
   public:
     lockable_ptr() {
     }
 
     lockable_ptr(T *t) :
-      inner_(new inner(t)) {
+      wrapper_(new wrapper(t)) {
     }
 
     lockable_ptr(const lockable_ptr<T>& rvalue) :
-      inner_(rvalue.inner_) {
+      wrapper_(rvalue.wrapper_) {
     }
 
     lockable_ptr(const lockable_ptr<T>&& rvalue) :
-      inner_(rvalue.inner_) {
-      rvalue.inner_.reset();
+      wrapper_(rvalue.wrapper_) {
+      rvalue.wrapper_.reset();
     }
 
   public:
     lockable_ptr<T>& operator=(const lockable_ptr<T>& rvalue) {
-      inner_ = rvalue.inner_;
+      wrapper_ = rvalue.wrapper_;
 
       return *this;
     }
 
   public:
+    
+  public:
     class reader {
       private:
-        template <typename T>
         friend class lockable_ptr<T>;
 
       private:
-        reader(lockable_ptr<T>& parent) {
+        explicit reader(typename wrapper::pointer_type& parent_wrapper) :
+          wrapper_(parent_wrapper),
+          lock_(wrapper_->mutex_) {
         }
+
+      public:
+
+      private:
+        std::shared_ptr<struct wrapper> wrapper_;
+
+      private:
+        std::shared_lock<std::shared_timed_mutex> lock_;
     };
 
     class writer {
       private:
-        template <typename T>
         friend class lockable_ptr<T>;
 
       private:
-        writer(lockable_ptr<T>& parent) {
+        explicit writer(typename wrapper::pointer_type& parent_wrapper) :
+          wrapper_(parent_wrapper),
+          lock_(wrapper_->mutex_) {
         }
+
+      public:
+
+      private:
+        std::shared_ptr<struct wrapper> wrapper_;
+
+      private:
+        std::unique_lock<std::shared_timed_mutex> lock_;
     };
 
   public:
     reader get_reader() {
-      return reader(*this);
+      return reader(wrapper_);
     }
 
     writer get_writer() {
-      return writer(*this);
+      return writer(wrapper_);
     }
 
   private:
-    struct inner {
-      inner(T *t) :
-        t_(t) {
-      }
-      ~inner() {
-        delete t_;
-        t_ = 0;
-      }
+    std::shared_ptr<struct wrapper> wrapper_;
+};
 
-      std::shared_mutex mutex_;
+template<typename T>
+class enable_lockable_from_this {
+  public:
+    friend class lockable_ptr<T>;
 
-      T *t_;
-    };
+  public:
+    lockable_ptr<T> lockable_from_this() {
+      return weak_ref_.lock();
+    }
 
-  private:
-    std::shared_ptr<struct inner> inner_;
+  protected:
+    std::weak_ptr<T> weak_ref_;
 };
 
 }; // namespace lp
