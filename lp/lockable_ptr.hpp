@@ -29,13 +29,14 @@ namespace lp
 template<typename T>
 class lockable_ptr {
   private:
+    friend class enable_lockable_from_this<T>;
+
+  private:
     friend class reader;
     friend class writer;
 
   private:
     struct wrapper {
-      typedef std::shared_ptr<struct wrapper> pointer_type;
-
       wrapper(T *t) :
         t_(t) {
       }
@@ -74,19 +75,34 @@ class lockable_ptr {
     }
 
   public:
-    
+    void reset() {
+      wrapper_.reset();
+    }
+
+    void reset(const lockable_ptr<T>& rvalue) {
+      wrapper_ = rvalue.wrapper_;
+    }
+
   public:
     class reader {
       private:
         friend class lockable_ptr<T>;
+        friend class enable_lockable_from_this<T>;
 
       private:
-        explicit reader(typename wrapper::pointer_type& parent_wrapper) :
+        explicit reader(std::shared_ptr<struct wrapper>& parent_wrapper) :
           wrapper_(parent_wrapper),
           lock_(wrapper_->mutex_) {
         }
 
       public:
+        const T* get() const {
+          return wrapper_->t_;
+        }
+
+        const T* operator->() const {
+          return wrapper_->t_;
+        }
 
       private:
         std::shared_ptr<struct wrapper> wrapper_;
@@ -98,14 +114,22 @@ class lockable_ptr {
     class writer {
       private:
         friend class lockable_ptr<T>;
+        friend class enable_lockable_from_this<T>;
 
       private:
-        explicit writer(typename wrapper::pointer_type& parent_wrapper) :
+        explicit writer(std::shared_ptr<struct wrapper>& parent_wrapper) :
           wrapper_(parent_wrapper),
           lock_(wrapper_->mutex_) {
         }
 
       public:
+        T* get() const {
+          return wrapper_->t_;
+        }
+
+        T* operator->() const {
+          return wrapper_->t_;
+        }
 
       private:
         std::shared_ptr<struct wrapper> wrapper_;
@@ -133,12 +157,20 @@ class enable_lockable_from_this {
     friend class lockable_ptr<T>;
 
   public:
-    lockable_ptr<T> lockable_from_this() {
-      return weak_ref_.lock();
+    typename lockable_ptr<T>::reader reader_from_this() {
+      std::shared_ptr<typename lockable_ptr<T>::wrapper> wrapper =
+        weak_wrapper_.lock();
+      return typename lockable_ptr<T>::reader(wrapper);
+    }
+
+    typename lockable_ptr<T>::writer writer_from_this() {
+      std::shared_ptr<typename lockable_ptr<T>::wrapper> wrapper =
+        weak_wrapper_.lock();
+      return typename lockable_ptr<T>::writer(wrapper);
     }
 
   protected:
-    std::weak_ptr<T> weak_ref_;
+    std::weak_ptr<typename lockable_ptr<T>::wrapper> weak_wrapper_;
 };
 
 }; // namespace lp
