@@ -20,7 +20,7 @@
 #include <memory>
 #include <shared_mutex>
 
-#include "lockable_ptr_base.hpp"
+#include <lp/lockable_ptr_base.hpp>
 
 
 namespace lp
@@ -50,12 +50,24 @@ class lockable_ptr {
       T *t_;
     };
 
+  private:
+    void enable_lockable_setter(
+        enable_lockable_from_this<T>* t,
+        std::shared_ptr<struct wrapper>& wrapper) {
+      t->weak_wrapper_ = wrapper;
+    }
+    void enable_lockable_setter(
+        void* t,
+        std::shared_ptr<struct wrapper>& wrapper) {
+    }
+
   public:
     lockable_ptr() {
     }
 
-    lockable_ptr(T *t) :
+    lockable_ptr(T* t) :
       wrapper_(new wrapper(t)) {
+      enable_lockable_setter(t, wrapper_);
     }
 
     lockable_ptr(const lockable_ptr<T>& rvalue) :
@@ -77,6 +89,11 @@ class lockable_ptr {
   public:
     void reset() {
       wrapper_.reset();
+    }
+
+    void reset(T* t) {
+      wrapper_.reset(new wrapper(t));
+      enable_lockable_setter(t, wrapper_);
     }
 
     void reset(const lockable_ptr<T>& rvalue) {
