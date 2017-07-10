@@ -108,7 +108,7 @@ class lockable_ptr {
 
       private:
         explicit reader(std::shared_ptr<struct wrapper>& parent_wrapper) :
-          wrapper_(parent_wrapper),
+          wrapper_(std::atomic_load(&parent_wrapper)),
           lock_(wrapper_->mutex_) {
         }
 
@@ -135,7 +135,7 @@ class lockable_ptr {
 
       private:
         explicit writer(std::shared_ptr<struct wrapper>& parent_wrapper) :
-          wrapper_(parent_wrapper),
+          wrapper_(std::atomic_load(&parent_wrapper)),
           lock_(wrapper_->mutex_) {
         }
 
