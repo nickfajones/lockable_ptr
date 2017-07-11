@@ -20,17 +20,12 @@
 #include <memory>
 #include <shared_mutex>
 
-#include <lp/lockable_ptr_base.hpp>
-
 
 namespace lp
 {
 
 template<typename T>
 class lockable_ptr {
-  private:
-    friend class enable_lockable_from_this<T>;
-
   private:
     friend class reader;
     friend class writer;
@@ -50,24 +45,12 @@ class lockable_ptr {
       T *t_;
     };
 
-  private:
-    void enable_lockable_setter(
-        enable_lockable_from_this<T>* t,
-        std::shared_ptr<struct wrapper>& wrapper) {
-      t->weak_wrapper_ = wrapper;
-    }
-    void enable_lockable_setter(
-        void* t,
-        std::shared_ptr<struct wrapper>& wrapper) {
-    }
-
   public:
     lockable_ptr() {
     }
 
     lockable_ptr(T* t) :
       wrapper_(new wrapper(t)) {
-      enable_lockable_setter(t, wrapper_);
     }
 
     lockable_ptr(const lockable_ptr<T>& rvalue) :
@@ -93,7 +76,6 @@ class lockable_ptr {
 
     void reset(T* t) {
       wrapper_.reset(new wrapper(t));
-      enable_lockable_setter(t, wrapper_);
     }
 
     void reset(const lockable_ptr<T>& rvalue) {
@@ -104,7 +86,6 @@ class lockable_ptr {
     class reader {
       private:
         friend class lockable_ptr<T>;
-        friend class enable_lockable_from_this<T>;
 
       private:
         explicit reader(std::shared_ptr<struct wrapper>& parent_wrapper) :
@@ -120,6 +101,10 @@ class lockable_ptr {
         const T* operator->() const {
           return wrapper_->t_;
         }
+        
+        const T& operator*() const {
+          return *(wrapper_->t_);
+        }
 
       private:
         std::shared_ptr<struct wrapper> wrapper_;
@@ -131,12 +116,12 @@ class lockable_ptr {
     class writer {
       private:
         friend class lockable_ptr<T>;
-        friend class enable_lockable_from_this<T>;
 
       private:
         explicit writer(std::shared_ptr<struct wrapper>& parent_wrapper) :
           wrapper_(std::atomic_load(&parent_wrapper)),
           lock_(wrapper_->mutex_) {
+          
         }
 
       public:
@@ -146,6 +131,10 @@ class lockable_ptr {
 
         T* operator->() const {
           return wrapper_->t_;
+        }
+        
+        T& operator*() const {
+          return *(wrapper_->t_);
         }
 
       private:
@@ -166,28 +155,6 @@ class lockable_ptr {
 
   private:
     std::shared_ptr<struct wrapper> wrapper_;
-};
-
-template<typename T>
-class enable_lockable_from_this {
-  public:
-    friend class lockable_ptr<T>;
-
-  public:
-    typename lockable_ptr<T>::reader reader_from_this() {
-      std::shared_ptr<typename lockable_ptr<T>::wrapper> wrapper =
-        weak_wrapper_.lock();
-      return typename lockable_ptr<T>::reader(wrapper);
-    }
-
-    typename lockable_ptr<T>::writer writer_from_this() {
-      std::shared_ptr<typename lockable_ptr<T>::wrapper> wrapper =
-        weak_wrapper_.lock();
-      return typename lockable_ptr<T>::writer(wrapper);
-    }
-
-  protected:
-    std::weak_ptr<typename lockable_ptr<T>::wrapper> weak_wrapper_;
 };
 
 }; // namespace lp
